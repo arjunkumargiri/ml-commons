@@ -32,6 +32,9 @@ import org.opensearch.ml.common.input.MLInput;
 import org.opensearch.ml.common.input.parameter.MLAlgoParams;
 import org.opensearch.ml.common.output.MLOutput;
 import org.opensearch.ml.common.transport.MLTaskResponse;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentAction;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentRequest;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentResponse;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorAction;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorInput;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorRequest;
@@ -251,6 +254,16 @@ public class MachineLearningNodeClient implements MachineLearningClient {
         MLToolGetRequest mlToolGetRequest = MLToolGetRequest.builder().toolName(toolName).build();
 
         client.execute(MLGetToolAction.INSTANCE, mlToolGetRequest, getMlGetToolResponseActionListener(listener));
+    }
+
+    @Override
+    public void registerAgent(MLRegisterAgentRequest mlRegisterAgentRequest, ActionListener<MLRegisterAgentResponse> listener) {
+        client
+            .execute(
+                MLRegisterAgentAction.INSTANCE,
+                mlRegisterAgentRequest,
+                ActionListener.wrap(listener::onResponse, listener::onFailure)
+            );
     }
 
     private ActionListener<MLToolsListResponse> getMlListToolsResponseActionListener(ActionListener<List<ToolMetadata>> listener) {

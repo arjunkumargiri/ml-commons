@@ -66,6 +66,9 @@ import org.opensearch.ml.common.output.MLOutput;
 import org.opensearch.ml.common.output.MLPredictionOutput;
 import org.opensearch.ml.common.output.MLTrainingOutput;
 import org.opensearch.ml.common.transport.MLTaskResponse;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentAction;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentRequest;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentResponse;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorAction;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorInput;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorRequest;
@@ -151,6 +154,9 @@ public class MachineLearningNodeClientTest {
 
     @Mock
     ActionListener<MLRegisterModelGroupResponse> registerModelGroupResponseActionListener;
+
+    @Mock
+    ActionListener<MLRegisterAgentResponse> registerAgentResponseActionListener;
 
     @InjectMocks
     MachineLearningNodeClient machineLearningNodeClient;
@@ -700,5 +706,27 @@ public class MachineLearningNodeClientTest {
             ShardSearchFailure.EMPTY_ARRAY,
             SearchResponse.Clusters.EMPTY
         );
+    }
+
+    @Test
+    public void testRegisterAgent() {
+        String agentId = "agentId";
+
+        doAnswer(invocation -> {
+            ActionListener<MLRegisterAgentResponse> actionListener = invocation.getArgument(2);
+            MLRegisterAgentResponse output = new MLRegisterAgentResponse(agentId);
+            actionListener.onResponse(output);
+            return null;
+        }).when(client).execute(eq(MLRegisterAgentAction.INSTANCE), any(), any());
+
+        ArgumentCaptor<MLRegisterAgentResponse> argumentCaptor = ArgumentCaptor.forClass(MLRegisterAgentResponse.class);
+        MLRegisterAgentRequest registerAgentRequest = MLRegisterAgentRequest.builder().build();
+
+        machineLearningNodeClient.registerAgent(registerAgentRequest, registerAgentResponseActionListener);
+
+        verify(client).execute(eq(MLRegisterAgentAction.INSTANCE), isA(MLRegisterAgentRequest.class), any());
+        verify(registerAgentResponseActionListener).onResponse(argumentCaptor.capture());
+        assertEquals(agentId, (argumentCaptor.getValue()).getAgentId());
+
     }
 }

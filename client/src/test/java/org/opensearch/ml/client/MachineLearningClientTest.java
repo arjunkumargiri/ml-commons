@@ -40,6 +40,8 @@ import org.opensearch.ml.common.model.MLModelFormat;
 import org.opensearch.ml.common.model.TextEmbeddingModelConfig;
 import org.opensearch.ml.common.output.MLOutput;
 import org.opensearch.ml.common.output.MLTrainingOutput;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentRequest;
+import org.opensearch.ml.common.transport.agent.MLRegisterAgentResponse;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorInput;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorResponse;
 import org.opensearch.ml.common.transport.deploy.MLDeployModelResponse;
@@ -81,6 +83,9 @@ public class MachineLearningClientTest {
 
     @Mock
     MLRegisterModelGroupResponse registerModelGroupResponse;
+
+    @Mock
+    MLRegisterAgentResponse registerAgentResponse;
 
     private String modekId = "test_model_id";
     private MLModel mlModel;
@@ -177,6 +182,11 @@ public class MachineLearningClientTest {
             @Override
             public void getTool(String toolName, ActionListener<ToolMetadata> listener) {
                 listener.onResponse(null);
+            }
+
+            @Override
+            public void registerAgent(MLRegisterAgentRequest mlRegisterAgentRequest, ActionListener<MLRegisterAgentResponse> listener) {
+                listener.onResponse(registerAgentResponse);
             }
         };
     }
@@ -364,5 +374,11 @@ public class MachineLearningClientTest {
             .build();
 
         assertEquals(createConnectorResponse, machineLearningClient.createConnector(mlCreateConnectorInput).actionGet());
+    }
+
+    @Test
+    public void testRegisterAgent() {
+        MLRegisterAgentRequest registerAgentRequest = MLRegisterAgentRequest.builder().build();
+        assertEquals(registerAgentResponse, machineLearningClient.registerAgent(registerAgentRequest).actionGet());
     }
 }

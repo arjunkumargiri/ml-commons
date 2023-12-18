@@ -41,6 +41,7 @@ import org.opensearch.ml.common.output.model.ModelTensors;
 import org.opensearch.ml.common.spi.memory.Memory;
 import org.opensearch.ml.common.spi.tools.Tool;
 import org.opensearch.ml.common.transport.MLTaskResponse;
+import org.opensearch.ml.common.transport.prediction.MLPredictionTaskAction;
 import org.opensearch.ml.engine.memory.ConversationIndexMemory;
 import org.opensearch.ml.engine.memory.MLMemoryManager;
 import org.opensearch.ml.repackage.com.google.common.collect.ImmutableMap;
@@ -149,17 +150,27 @@ public class MLChatAgentRunnerTest {
     }
 
     @Test
+    public void test_HappyCase_ReturnsSuccess() {
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
+        mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        ModelTensorOutput modelTensorOutput = (ModelTensorOutput) objectCaptor.getValue();
+        List<ModelTensor> agentOutput = modelTensorOutput.getMlModelOutputs().get(0).getMlModelTensors();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals("This is the final answer", agentOutput.get(0).getDataAsMap().get("response"));
+        Mockito.verify(firstTool).run(Mockito.anyMap(), any(StepListener.class));
+        Mockito.verify(client, Mockito.times(3)).execute(Mockito.eq(MLPredictionTaskAction.INSTANCE), Mockito.any(), Mockito.any(ActionListener.class));
+    }
+    @Test(expected = IllegalArgumentException.class)
+    public void test_NotTools_ThrowsException() {
+        final MLAgent mlAgent = getMlAgent();
+        mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
+    }
+
+    @Test
     public void testRunWithIncludeOutputNotSet() {
-        LLMSpec llmSpec = LLMSpec.builder().modelId("MODEL_ID").build();
-        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).build();
-        MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).build();
-        final MLAgent mlAgent = MLAgent
-            .builder()
-            .name("TestAgent")
-            .llm(llmSpec)
-            .memory(mlMemorySpec)
-            .tools(Arrays.asList(firstToolSpec, secondToolSpec))
-            .build();
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
         mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
         Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
         ModelTensorOutput modelTensorOutput = (ModelTensorOutput) objectCaptor.getValue();
@@ -171,16 +182,8 @@ public class MLChatAgentRunnerTest {
 
     @Test
     public void testRunWithIncludeOutputSet() {
-        LLMSpec llmSpec = LLMSpec.builder().modelId("MODEL_ID").build();
-        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).includeOutputInAgentResponse(false).build();
         MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).includeOutputInAgentResponse(true).build();
-        final MLAgent mlAgent = MLAgent
-            .builder()
-            .name("TestAgent")
-            .memory(mlMemorySpec)
-            .llm(llmSpec)
-            .tools(Arrays.asList(firstToolSpec, secondToolSpec))
-            .build();
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), secondToolSpec);
         HashMap<String, String> params = new HashMap<>();
         mlChatAgentRunner.run(mlAgent, params, agentActionListener);
         Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
@@ -195,17 +198,7 @@ public class MLChatAgentRunnerTest {
 
     @Test
     public void testChatHistoryExcludeOngoingQuestion() {
-        LLMSpec llmSpec = LLMSpec.builder().modelId("MODEL_ID").build();
-        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).includeOutputInAgentResponse(false).build();
-        MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).includeOutputInAgentResponse(true).build();
-        final MLAgent mlAgent = MLAgent
-            .builder()
-            .name("TestAgent")
-            .memory(mlMemorySpec)
-            .llm(llmSpec)
-            .tools(Arrays.asList(firstToolSpec, secondToolSpec))
-            .build();
-
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
         doAnswer(invocation -> {
             ActionListener<List<Interaction>> listener = invocation.getArgument(0);
             List<Interaction> interactionList = generateInteractions(2);
@@ -248,6 +241,28 @@ public class MLChatAgentRunnerTest {
             listener.onResponse(response);
             return null;
         };
+    }
+
+    private Map<String, String> getParams() {
+        final Map<String, String> params = new HashMap<>();
+        params.put(MLAgentExecutor.MEMORY_ID, "memoryId");
+        return params;
+    }
+
+    private MLToolSpec getMLToolSpec(String toolName) {
+        return MLToolSpec.builder().name(toolName).type(toolName).build();
+    }
+
+    private MLAgent getMlAgent(MLToolSpec ...tools) {
+        LLMSpec llmSpec = LLMSpec.builder().modelId("MODEL_ID").build();
+        MLMemorySpec mlMemorySpec = MLMemorySpec.builder().type("memoryType").build();
+        return MLAgent
+                .builder()
+                .name("TestAgent")
+                .memory(mlMemorySpec)
+                .tools(Arrays.asList(tools))
+                .llm(llmSpec)
+                .build();
     }
 
 }

@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.google.gson.Gson;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -25,11 +26,15 @@ import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.ml.common.agent.MLAgent;
 import org.opensearch.ml.common.agent.MLMemorySpec;
 import org.opensearch.ml.common.agent.MLToolSpec;
+import org.opensearch.ml.common.conversation.ActionConstants;
 import org.opensearch.ml.common.output.model.ModelTensor;
+import org.opensearch.ml.common.output.model.ModelTensorOutput;
+import org.opensearch.ml.common.output.model.ModelTensors;
 import org.opensearch.ml.common.spi.memory.Memory;
 import org.opensearch.ml.common.spi.tools.Tool;
 import org.opensearch.ml.engine.memory.ConversationIndexMemory;
 
+import org.opensearch.ml.engine.memory.MLMemoryManager;
 import software.amazon.awssdk.utils.ImmutableMap;
 
 public class MLFlowAgentRunnerTest {
@@ -66,6 +71,12 @@ public class MLFlowAgentRunnerTest {
     private Tool secondTool;
 
     @Mock
+    private ConversationIndexMemory memory;
+
+    @Mock
+    private MLMemoryManager memoryManager;
+
+    @Mock
     private ConversationIndexMemory.Factory mockMemoryFactory;
 
     @Mock
@@ -76,6 +87,9 @@ public class MLFlowAgentRunnerTest {
 
     @Captor
     private ArgumentCaptor<StepListener<Object>> nextStepListenerCaptor;
+    
+    @Captor
+    private ArgumentCaptor<Map<String, String>> toolParamsCaptor;
 
     @Before
     @SuppressWarnings("unchecked")
@@ -97,7 +111,7 @@ public class MLFlowAgentRunnerTest {
             .run(Mockito.anyMap(), nextStepListenerCaptor.capture());
     }
 
-    private Answer generateToolResponse(String response) {
+    private Answer generateToolResponse(Object response) {
         return invocation -> {
             ActionListener<Object> listener = invocation.getArgument(1);
             listener.onResponse(response);
@@ -106,19 +120,46 @@ public class MLFlowAgentRunnerTest {
     }
 
     @Test
+    public void test_HappyCase_GenerateSuccessfulResponse() {
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+
+        Mockito.verify(firstTool).run(Mockito.anyMap(), Mockito.any());
+        Mockito.verify(secondTool).run(Mockito.anyMap(), Mockito.any());
+        List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals(SECOND_TOOL, agentOutput.get(0).getName());
+        Assert.assertEquals("Second tool response", agentOutput.get(0).getResult());
+    }
+
+
+    @Test
+    public void test_SingleTool_GenerateSuccessfulResponse() {
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        Mockito.verify(firstTool).run(Mockito.anyMap(), Mockito.any());
+        List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals(FIRST_TOOL, agentOutput.get(0).getName());
+        Assert.assertEquals("First tool response", agentOutput.get(0).getResult());
+    }
+
+    @Test
+    public void test_ZeroTool_ThrowsValidationError() {
+        final MLAgent mlAgent = getMlAgent();
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+        Mockito.verify(agentActionListener).onFailure(Mockito.any());
+    }
+
+    @Test
     public void testRunWithIncludeOutputNotSet() {
-        final Map<String, String> params = new HashMap<>();
-        params.put(MLAgentExecutor.MEMORY_ID, "memoryId");
-        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).build();
-        MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).build();
-        MLMemorySpec mlMemorySpec = MLMemorySpec.builder().type("memoryType").build();
-        final MLAgent mlAgent = MLAgent
-            .builder()
-            .name("TestAgent")
-            .memory(mlMemorySpec)
-            .tools(Arrays.asList(firstToolSpec, secondToolSpec))
-            .build();
-        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
         Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
         List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
         Assert.assertEquals(1, agentOutput.size());
@@ -129,18 +170,10 @@ public class MLFlowAgentRunnerTest {
 
     @Test
     public void testRunWithIncludeOutputSet() {
-        final Map<String, String> params = new HashMap<>();
-        params.put(MLAgentExecutor.MEMORY_ID, "memoryId");
         MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).includeOutputInAgentResponse(true).build();
         MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).includeOutputInAgentResponse(true).build();
-        MLMemorySpec mlMemorySpec = MLMemorySpec.builder().type("memoryType").build();
-        final MLAgent mlAgent = MLAgent
-            .builder()
-            .name("TestAgent")
-            .memory(mlMemorySpec)
-            .tools(Arrays.asList(firstToolSpec, secondToolSpec))
-            .build();
-        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        final MLAgent mlAgent = getMlAgent(firstToolSpec, secondToolSpec);
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
         Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
         List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
         // Respond with all tool output
@@ -153,8 +186,6 @@ public class MLFlowAgentRunnerTest {
 
     @Test
     public void testWithMemoryNotSet() {
-        final Map<String, String> params = new HashMap<>();
-        params.put(MLAgentExecutor.MEMORY_ID, "memoryId");
         MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).build();
         MLToolSpec secondToolSpec = MLToolSpec.builder().name(SECOND_TOOL).type(SECOND_TOOL).build();
         final MLAgent mlAgent = MLAgent
@@ -163,7 +194,7 @@ public class MLFlowAgentRunnerTest {
             .memory(null)
             .tools(Arrays.asList(firstToolSpec, secondToolSpec))
             .build();
-        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
         Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
         List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
         Assert.assertEquals(1, agentOutput.size());
@@ -171,4 +202,150 @@ public class MLFlowAgentRunnerTest {
         Assert.assertEquals(SECOND_TOOL, agentOutput.get(0).getName());
         Assert.assertEquals("Second tool response", agentOutput.get(0).getResult());
     }
+
+    @Test
+    public void test_MemorySet_UpdateInteraction() {
+        final Map<String, String> params = getParams();
+        params.put(MLAgentExecutor.PARENT_INTERACTION_ID, "test_interaction_id");
+        Mockito.doAnswer(invocation -> {
+            ActionListener<Memory> listener = invocation.getArgument(1);
+            listener.onResponse(memory);
+            return null;
+        }).when(mockMemoryFactory).create(Mockito.eq("memoryId"), Mockito.any(ActionListener.class));
+        Mockito.when(memory.getMemoryManager()).thenReturn(memoryManager);
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL));
+        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+
+        Mockito.verify(memory).getMemoryManager();
+        Map<String, Object> expectedInteraction = ImmutableMap.of(ActionConstants.ADDITIONAL_INFO_FIELD,
+                ImmutableMap.of("firstTool.output", "First tool response"));
+        Mockito.verify(memoryManager).updateInteraction(
+                Mockito.eq("test_interaction_id"), Mockito.eq(expectedInteraction), Mockito.any());
+    }
+    
+    @Test
+    public void test_ToolParams_ValidateToolSpecParamsIsIncluded() {
+        final Map<String, String> params = getParams();
+        params.put("test_param_key", "test_param_value");
+        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL)
+                .parameters(ImmutableMap.of("test_toolspec_key", "test_toolspec_value")).build();
+        final MLAgent mlAgent = getMlAgent(firstToolSpec);
+        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        Mockito.verify(firstTool).run(toolParamsCaptor.capture(), Mockito.any());
+        Assert.assertEquals("test_param_value", toolParamsCaptor.getValue().get("test_param_key"));
+        Assert.assertEquals("test_toolspec_value", toolParamsCaptor.getValue().get("test_toolspec_key"));
+    }
+
+    @Test
+    public void test_ToolParams_ValidateKeywordReplaced() {
+        final Map<String, String> params = getParams();
+        params.put("test_param_key", "test_param_value");
+        params.put(FIRST_TOOL + ".test_param", "test_input_value");
+        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).build();
+        final MLAgent mlAgent = getMlAgent(firstToolSpec);
+        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        Mockito.verify(firstTool).run(toolParamsCaptor.capture(), Mockito.any());
+        Assert.assertEquals("test_param_value", toolParamsCaptor.getValue().get("test_param_key"));
+        Assert.assertEquals("test_input_value", toolParamsCaptor.getValue().get("test_param"));
+    }
+
+    @Test
+    public void test_ToolParams_ValidateInputParamsReplaced() {
+        final Map<String, String> params = getParams();
+        params.put("test_param_key", "test_param_value");
+        params.put("input", "Check if value is replaced: ${parameters.test_param_key}");
+        MLToolSpec firstToolSpec = MLToolSpec.builder().name(FIRST_TOOL).type(FIRST_TOOL).build();
+        final MLAgent mlAgent = getMlAgent(firstToolSpec);
+        mlFlowAgentRunner.run(mlAgent, params, agentActionListener);
+        Mockito.verify(firstTool).run(toolParamsCaptor.capture(), Mockito.any());
+        Assert.assertEquals("test_param_value", toolParamsCaptor.getValue().get("test_param_key"));
+        Assert.assertEquals("Check if value is replaced: test_param_value", toolParamsCaptor.getValue().get("input"));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void test_CreateTool_InvalidTool_ThrowsException() {
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec("invalid_tool"));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+    }
+
+    @Test
+    public void test_HandleToolResponse_ModelTensorOutput() {
+        ModelTensor modelTensor = ModelTensor.builder().name(FIRST_TOOL).result("First tool response").build();
+        ModelTensors modelTensors = ModelTensors.builder().mlModelTensors(Arrays.asList(modelTensor)).build();
+        ModelTensorOutput modelTensorOutput = new ModelTensorOutput(Arrays.asList(modelTensors));
+        Mockito
+                .doAnswer(generateToolResponse(modelTensorOutput))
+                .when(firstTool)
+                .run(Mockito.anyMap(), nextStepListenerCaptor.capture());
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        Mockito.verify(firstTool).run(Mockito.anyMap(), Mockito.any());
+        List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals(FIRST_TOOL, agentOutput.get(0).getName());
+        Assert.assertEquals("First tool response", agentOutput.get(0).getResult());
+    }
+
+    @Test
+    public void test_HandleToolResponse_ModelTensor() {
+        ModelTensor modelTensor = ModelTensor.builder().name(FIRST_TOOL).result("First tool response").build();
+        Mockito
+                .doAnswer(generateToolResponse(modelTensor))
+                .when(firstTool)
+                .run(Mockito.anyMap(), nextStepListenerCaptor.capture());
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        Mockito.verify(firstTool).run(Mockito.anyMap(), Mockito.any());
+        List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals(FIRST_TOOL, agentOutput.get(0).getName());
+        Assert.assertEquals(new Gson().toJson(modelTensor), agentOutput.get(0).getResult());
+    }
+
+    @Test
+    public void test_HandleToolResponse_ModelTensors() {
+        ModelTensor modelTensor = ModelTensor.builder().name(FIRST_TOOL).result("First tool response").build();
+        ModelTensors modelTensors = ModelTensors.builder().mlModelTensors(Arrays.asList(modelTensor)).build();
+        Mockito
+                .doAnswer(generateToolResponse(modelTensors))
+                .when(firstTool)
+                .run(Mockito.anyMap(), nextStepListenerCaptor.capture());
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL));
+        mlFlowAgentRunner.run(mlAgent, getParams(), agentActionListener);
+
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        Mockito.verify(firstTool).run(Mockito.anyMap(), Mockito.any());
+        List<ModelTensor> agentOutput = (List<ModelTensor>) objectCaptor.getValue();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals(FIRST_TOOL, agentOutput.get(0).getName());
+        Assert.assertEquals(new Gson().toJson(modelTensors), agentOutput.get(0).getResult());
+    }
+
+    private Map<String, String> getParams() {
+        final Map<String, String> params = new HashMap<>();
+        params.put(MLAgentExecutor.MEMORY_ID, "memoryId");
+        return params;
+    }
+
+    private MLToolSpec getMLToolSpec(String toolName) {
+        return MLToolSpec.builder().name(toolName).type(toolName).build();
+    }
+
+    private MLAgent getMlAgent(MLToolSpec ...tools) {
+        MLMemorySpec mlMemorySpec = MLMemorySpec.builder().type("memoryType").build();
+        return MLAgent
+                .builder()
+                .name("TestAgent")
+                .memory(mlMemorySpec)
+                .tools(Arrays.asList(tools))
+                .build();
+    }
+
 }

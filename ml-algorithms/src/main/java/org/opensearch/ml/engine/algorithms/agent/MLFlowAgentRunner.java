@@ -142,11 +142,7 @@ public class MLFlowAgentRunner {
                 previousStepListener = nextStepListener;
             }
         }
-        if (toolSpecs.size() == 1) {
-            firstTool.run(firstToolExecuteParams, listener);
-        } else {
-            firstTool.run(firstToolExecuteParams, firstStepListener);
-        }
+        firstTool.run(firstToolExecuteParams, firstStepListener);
     }
 
     private void updateMemory(Map<String, Object> additionalInfo, MLMemorySpec memorySpec, String memoryId, String interactionId) {

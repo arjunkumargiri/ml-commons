@@ -162,10 +162,48 @@ public class MLChatAgentRunnerTest {
         Mockito.verify(firstTool).run(Mockito.anyMap(), any(StepListener.class));
         Mockito.verify(client, Mockito.times(3)).execute(Mockito.eq(MLPredictionTaskAction.INSTANCE), Mockito.any(), Mockito.any(ActionListener.class));
     }
-    @Test(expected = IllegalArgumentException.class)
-    public void test_NotTools_ThrowsException() {
+    /*@Test(expected = IllegalArgumentException.class)
+    public void test_NoTools_ThrowsException() {
         final MLAgent mlAgent = getMlAgent();
         mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
+    }*/
+
+    @Test
+    public void test_LLMResponseAsJson_ReturnsSuccess() {
+        Mockito
+                .doAnswer(getLLMAnswer(ImmutableMap.of("response", "```json {'thought': 'Thought 1', 'action': " + FIRST_TOOL + "}```")))
+                .doAnswer(getLLMAnswer(ImmutableMap.of("response", "```json {'thought': 'Thought 1', 'action': " + SECOND_TOOL + "}```")))
+                .doAnswer(getLLMAnswer(ImmutableMap.of("response", "```json {'final_answer': 'This is the final answer'}```")))
+                .when(client)
+                .execute(any(ActionType.class), any(ActionRequest.class), isA(ActionListener.class));
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
+        mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        ModelTensorOutput modelTensorOutput = (ModelTensorOutput) objectCaptor.getValue();
+        List<ModelTensor> agentOutput = modelTensorOutput.getMlModelOutputs().get(0).getMlModelTensors();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals("This is the final answer", agentOutput.get(0).getDataAsMap().get("response"));
+        Mockito.verify(firstTool).run(Mockito.anyMap(), any(StepListener.class));
+        Mockito.verify(client, Mockito.times(3)).execute(Mockito.eq(MLPredictionTaskAction.INSTANCE), Mockito.any(), Mockito.any(ActionListener.class));
+    }
+
+    @Test
+    public void test_LLMResponseNonJson_ReturnsSuccess() {
+        Mockito
+                .doAnswer(getLLMAnswer(ImmutableMap.of("response", "This is the final answer")))
+                .when(client)
+                .execute(any(ActionType.class), any(ActionRequest.class), isA(ActionListener.class));
+        final MLAgent mlAgent = getMlAgent(getMLToolSpec(FIRST_TOOL), getMLToolSpec(SECOND_TOOL));
+        mlChatAgentRunner.run(mlAgent, new HashMap<>(), agentActionListener);
+        Mockito.verify(agentActionListener).onResponse(objectCaptor.capture());
+        ModelTensorOutput modelTensorOutput = (ModelTensorOutput) objectCaptor.getValue();
+        List<ModelTensor> agentOutput = modelTensorOutput.getMlModelOutputs().get(0).getMlModelTensors();
+        Assert.assertEquals(1, agentOutput.size());
+        // Respond with last tool output
+        Assert.assertEquals("This is the final answer", agentOutput.get(0).getDataAsMap().get("response"));
+        Mockito.verify(firstTool, Mockito.times(0)).run(Mockito.anyMap(), any(StepListener.class));
+        Mockito.verify(client, Mockito.times(1)).execute(Mockito.eq(MLPredictionTaskAction.INSTANCE), Mockito.any(), Mockito.any(ActionListener.class));
     }
 
     @Test

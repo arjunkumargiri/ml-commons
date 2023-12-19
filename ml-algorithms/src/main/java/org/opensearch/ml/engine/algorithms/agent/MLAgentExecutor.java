@@ -52,6 +52,7 @@ import com.google.gson.Gson;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.extern.log4j.Log4j2;
+import org.opensearch.ml.repackage.com.google.common.annotations.VisibleForTesting;
 
 @Log4j2
 @Data
@@ -135,7 +136,9 @@ public class MLAgentExecutor implements Executable {
                                         .sessionId(memory.getConversationId())
                                         .build();
                                     conversationIndexMemory
-                                        .save(msg, null, null, null, ActionListener.<CreateInteractionResponse>wrap(interaction -> {
+                                        .save(
+                                                msg, null, null, null,
+                                                ActionListener.<CreateInteractionResponse>wrap(interaction -> {
                                             log.info("Created parent interaction ID: " + interaction.getId());
                                             inputDataSet.getParameters().put(PARENT_INTERACTION_ID, interaction.getId());
                                             ActionListener<Object> agentActionListener = createAgentActionListener(
@@ -170,36 +173,42 @@ public class MLAgentExecutor implements Executable {
     }
 
     private void executeAgent(RemoteInferenceInputDataSet inputDataSet, MLAgent mlAgent, ActionListener<Object> agentActionListener) {
-        if ("flow".equals(mlAgent.getType())) {
-            MLFlowAgentRunner flowAgentExecutor = new MLFlowAgentRunner(
-                client,
-                settings,
-                clusterService,
-                xContentRegistry,
-                toolFactories,
-                memoryFactoryMap
-            );
-            flowAgentExecutor.run(mlAgent, inputDataSet.getParameters(), agentActionListener);
-        } else if ("cot".equals(mlAgent.getType())) {
-            MLReActAgentRunner reactAgentExecutor = new MLReActAgentRunner(
-                client,
-                settings,
-                clusterService,
-                xContentRegistry,
-                toolFactories,
-                memoryFactoryMap
-            );
-            reactAgentExecutor.run(mlAgent, inputDataSet.getParameters(), agentActionListener);
-        } else if ("conversational".equals(mlAgent.getType())) {
-            MLChatAgentRunner chatAgentRunner = new MLChatAgentRunner(
-                client,
-                settings,
-                clusterService,
-                xContentRegistry,
-                toolFactories,
-                memoryFactoryMap
-            );
-            chatAgentRunner.run(mlAgent, inputDataSet.getParameters(), agentActionListener);
+        MLAgentRunner mlAgentRunner = getAgentRunner(mlAgent);
+        mlAgentRunner.run(mlAgent, inputDataSet.getParameters(), agentActionListener);
+    }
+
+    @VisibleForTesting
+    protected MLAgentRunner getAgentRunner(MLAgent mlAgent) {
+        switch (mlAgent.getType()) {
+            case "flow":
+                return new MLFlowAgentRunner(
+                        client,
+                        settings,
+                        clusterService,
+                        xContentRegistry,
+                        toolFactories,
+                        memoryFactoryMap
+                );
+            case "cot":
+                return new MLReActAgentRunner(
+                        client,
+                        settings,
+                        clusterService,
+                        xContentRegistry,
+                        toolFactories,
+                        memoryFactoryMap
+                );
+            case "conversational":
+                return new MLChatAgentRunner(
+                        client,
+                        settings,
+                        clusterService,
+                        xContentRegistry,
+                        toolFactories,
+                        memoryFactoryMap
+                );
+            default:
+                throw new IllegalArgumentException("Unsupported agent type: " + mlAgent.getType());
         }
     }
 

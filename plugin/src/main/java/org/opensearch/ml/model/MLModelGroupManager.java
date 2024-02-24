@@ -64,6 +64,7 @@ public class MLModelGroupManager {
         try {
             String modelName = input.getName();
             User user = RestActionUtils.getUserContext(client);
+
             try (ThreadContext.StoredContext context = client.threadPool().getThreadContext().stashContext()) {
                 ActionListener<String> wrappedListener = ActionListener.runBefore(listener, () -> context.restore());
                 validateUniqueModelGroupName(input.getName(), ActionListener.wrap(modelGroups -> {
@@ -116,7 +117,8 @@ public class MLModelGroupManager {
                                 );
                             indexRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
 
-                            client.index(indexRequest, ActionListener.wrap(r -> {
+                            Client osClient = client.getRemoteClusterClient("remote");
+                            osClient.index(indexRequest, ActionListener.wrap(r -> {
                                 log.debug("Indexed model group doc successfully {}", modelName);
                                 wrappedListener.onResponse(r.getId());
                             }, e -> {
@@ -189,7 +191,8 @@ public class MLModelGroupManager {
             SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder().query(query);
             SearchRequest searchRequest = new SearchRequest(ML_MODEL_GROUP_INDEX).source(searchSourceBuilder);
 
-            client
+            Client osClient = client.getRemoteClusterClient("remote");
+            osClient
                 .search(
                     searchRequest,
                     ActionListener.runBefore(ActionListener.wrap(modelGroups -> { listener.onResponse(modelGroups); }, e -> {

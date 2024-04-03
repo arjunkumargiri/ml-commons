@@ -35,6 +35,8 @@ import org.opensearch.ml.common.transport.connector.MLCreateConnectorAction;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorInput;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorRequest;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorResponse;
+import org.opensearch.ml.dao.connector.ConnectorDao;
+import org.opensearch.ml.dao.connector.OpenSearchTransportConnectorDao;
 import org.opensearch.ml.engine.MLEngine;
 import org.opensearch.ml.engine.exceptions.MetaDataException;
 import org.opensearch.ml.engine.indices.MLIndicesHandler;
@@ -52,6 +54,9 @@ public class TransportCreateConnectorAction extends HandledTransportAction<Actio
     private final Client client;
     private final MLEngine mlEngine;
     private final MLModelManager mlModelManager;
+
+    private final ConnectorDao connectorDao;
+
     private final ConnectorAccessControlHelper connectorAccessControlHelper;
 
     private volatile List<String> trustedConnectorEndpointsRegex;
@@ -66,7 +71,8 @@ public class TransportCreateConnectorAction extends HandledTransportAction<Actio
         ConnectorAccessControlHelper connectorAccessControlHelper,
         Settings settings,
         ClusterService clusterService,
-        MLModelManager mlModelManager
+        MLModelManager mlModelManager,
+        ConnectorDao connectorDao
     ) {
         super(MLCreateConnectorAction.NAME, transportService, actionFilters, MLCreateConnectorRequest::new);
         this.mlIndicesHandler = mlIndicesHandler;
@@ -75,6 +81,7 @@ public class TransportCreateConnectorAction extends HandledTransportAction<Actio
         this.connectorAccessControlHelper = connectorAccessControlHelper;
         this.mlModelManager = mlModelManager;
         trustedConnectorEndpointsRegex = ML_COMMONS_TRUSTED_CONNECTOR_ENDPOINTS_REGEX.get(settings);
+        this.connectorDao = connectorDao;
         clusterService
             .getClusterSettings()
             .addSettingsUpdateConsumer(ML_COMMONS_TRUSTED_CONNECTOR_ENDPOINTS_REGEX, it -> trustedConnectorEndpointsRegex = it);
@@ -122,30 +129,14 @@ public class TransportCreateConnectorAction extends HandledTransportAction<Actio
     private void indexConnector(Connector connector, ActionListener<MLCreateConnectorResponse> listener) {
         connector.encrypt(mlEngine::encrypt);
         log.info("connector created, indexing into the connector system index");
-        mlIndicesHandler.initMLConnectorIndex(ActionListener.wrap(indexCreated -> {
-            if (!indexCreated) {
-                listener.onFailure(new RuntimeException("No response to create ML Connector index"));
-                return;
-            }
-            try (ThreadContext.StoredContext context = client.threadPool().getThreadContext().stashContext()) {
-                ActionListener<IndexResponse> indexResponseListener = ActionListener.wrap(r -> {
-                    log.info("Connector saved into index, result:{}, connector id: {}", r.getResult(), r.getId());
-                    MLCreateConnectorResponse response = new MLCreateConnectorResponse(r.getId());
-                    listener.onResponse(response);
-                }, listener::onFailure);
-
-                IndexRequest indexRequest = new IndexRequest(ML_CONNECTOR_INDEX);
-                indexRequest.source(connector.toXContent(XContentBuilder.builder(XContentType.JSON.xContent()), ToXContent.EMPTY_PARAMS));
-                indexRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
-                client.index(indexRequest, ActionListener.runBefore(indexResponseListener, context::restore));
-            } catch (Exception e) {
-                log.error("Failed to save ML connector", e);
-                listener.onFailure(e);
-            }
-        }, e -> {
-            log.error("Failed to init ML connector index", e);
+        try {
+            String connectorId = connectorDao.createConnector(connector);
+            log.info("Created connector: " + connectorId);
+            listener.onResponse(new MLCreateConnectorResponse(connectorId));
+        } catch (Exception e) {
+            log.error("Exception while creating connector" + e);
             listener.onFailure(e);
-        }));
+        }
     }
 
     private void validateRequest4AccessControl(MLCreateConnectorInput input, User user) {

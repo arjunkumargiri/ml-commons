@@ -12,6 +12,7 @@ import static org.opensearch.ml.common.utils.IndexUtils.UPDATED_INDEX_SETTINGS;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.opensearch.OpenSearchWrapperException;
@@ -20,9 +21,12 @@ import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
+import org.opensearch.action.support.PlainActionFuture;
 import org.opensearch.client.Client;
+import org.opensearch.client.Response;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.service.ClusterService;
+import org.opensearch.common.action.ActionFuture;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.action.ActionListener;
@@ -59,6 +63,12 @@ public class MLIndicesHandler {
 
     public void initMLTaskIndex(ActionListener<Boolean> listener) {
         initMLIndexIfAbsent(MLIndex.TASK, listener);
+    }
+
+    public boolean initMLConnectorIndex() throws ExecutionException, InterruptedException {
+        PlainActionFuture<Boolean> actionFuture = PlainActionFuture.newFuture();
+        initMLConnectorIndex(actionFuture);
+        return actionFuture.get();
     }
 
     public void initMLConnectorIndex(ActionListener<Boolean> listener) {

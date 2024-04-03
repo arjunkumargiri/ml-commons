@@ -35,6 +35,7 @@ import org.opensearch.index.get.GetResult;
 import org.opensearch.ml.common.connector.HttpConnector;
 import org.opensearch.ml.common.transport.connector.MLConnectorGetRequest;
 import org.opensearch.ml.common.transport.connector.MLConnectorGetResponse;
+import org.opensearch.ml.dao.connector.ConnectorDao;
 import org.opensearch.ml.helper.ConnectorAccessControlHelper;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
@@ -62,6 +63,9 @@ public class GetConnectorTransportActionTests extends OpenSearchTestCase {
     @Mock
     private ConnectorAccessControlHelper connectorAccessControlHelper;
 
+    @Mock
+    private ConnectorDao connectorDao;
+
     @Rule
     public ExpectedException exceptionRule = ExpectedException.none();
     GetConnectorTransportAction getConnectorTransportAction;
@@ -75,7 +79,8 @@ public class GetConnectorTransportActionTests extends OpenSearchTestCase {
         Settings settings = Settings.builder().build();
 
         getConnectorTransportAction = spy(
-            new GetConnectorTransportAction(transportService, actionFilters, client, xContentRegistry, connectorAccessControlHelper)
+            new GetConnectorTransportAction(transportService, actionFilters, client,
+                    xContentRegistry, connectorAccessControlHelper, connectorDao)
         );
 
         doAnswer(invocation -> {

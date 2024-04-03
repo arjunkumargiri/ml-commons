@@ -152,6 +152,8 @@ import org.opensearch.ml.common.transport.undeploy.MLUndeployModelsAction;
 import org.opensearch.ml.common.transport.update_cache.MLUpdateModelCacheAction;
 import org.opensearch.ml.common.transport.upload_chunk.MLRegisterModelMetaAction;
 import org.opensearch.ml.common.transport.upload_chunk.MLUploadModelChunkAction;
+import org.opensearch.ml.dao.connector.ConnectorDao;
+import org.opensearch.ml.dao.connector.OpenSearchTransportConnectorDao;
 import org.opensearch.ml.engine.MLEngine;
 import org.opensearch.ml.engine.MLEngineClassLoader;
 import org.opensearch.ml.engine.ModelHelper;
@@ -328,6 +330,7 @@ public class MachineLearningPlugin extends Plugin implements ActionPlugin, Searc
     private ClusterService clusterService;
     private ThreadPool threadPool;
     private Set<String> indicesToListen;
+    private ConnectorDao connectorDao;
 
     public static final String ML_ROLE_NAME = "ml";
     private NamedXContentRegistry xContentRegistry;
@@ -504,6 +507,8 @@ public class MachineLearningPlugin extends Plugin implements ActionPlugin, Searc
         mlModelChunkUploader = new MLModelChunkUploader(mlIndicesHandler, client, xContentRegistry, modelAccessControlHelper);
 
         MLTaskDispatcher mlTaskDispatcher = new MLTaskDispatcher(clusterService, client, settings, nodeHelper);
+        // TODO: Create factory to select Dao implementation based on runtime environment
+        connectorDao = new OpenSearchTransportConnectorDao(client, mlIndicesHandler, xContentRegistry);
         mlTrainingTaskRunner = new MLTrainingTaskRunner(
             threadPool,
             clusterService,
@@ -657,7 +662,8 @@ public class MachineLearningPlugin extends Plugin implements ActionPlugin, Searc
                 clusterManagerEventListener,
                 mlCircuitBreakerService,
                 mlModelAutoRedeployer,
-                cmHandler
+                cmHandler,
+                connectorDao
             );
     }
 

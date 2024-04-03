@@ -40,6 +40,7 @@ import org.opensearch.ml.common.connector.ConnectorProtocols;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorInput;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorRequest;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorResponse;
+import org.opensearch.ml.dao.connector.ConnectorDao;
 import org.opensearch.ml.engine.MLEngine;
 import org.opensearch.ml.engine.indices.MLIndicesHandler;
 import org.opensearch.ml.helper.ConnectorAccessControlHelper;
@@ -71,6 +72,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
     @Mock
     private MLModelManager mlModelManager;
 
+    @Mock
+    private ConnectorDao connectorDao;
     @Mock
     private Task task;
 
@@ -117,7 +120,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
             connectorAccessControlHelper,
             settings,
             clusterService,
-            mlModelManager
+            mlModelManager,
+            connectorDao
         );
         Settings settings = Settings.builder().put(ML_COMMONS_CONNECTOR_ACCESS_CONTROL_ENABLED.getKey(), true).build();
         threadContext = new ThreadContext(settings);
@@ -320,7 +324,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
             connectorAccessControlHelper,
             settings,
             clusterService,
-            mlModelManager
+            mlModelManager,
+            connectorDao
         );
         action.doExecute(task, request, actionListener);
         ArgumentCaptor<Exception> argumentCaptor = ArgumentCaptor.forClass(Exception.class);
@@ -361,7 +366,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
             connectorAccessControlHelper,
             settings,
             clusterService,
-            mlModelManager
+            mlModelManager,
+            connectorDao
         );
         action.doExecute(task, request, actionListener);
         ArgumentCaptor<Exception> argumentCaptor = ArgumentCaptor.forClass(Exception.class);
@@ -405,7 +411,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
             connectorAccessControlHelper,
             settings,
             clusterService,
-            mlModelManager
+            mlModelManager,
+            connectorDao
         );
         action.doExecute(task, request, actionListener);
         ArgumentCaptor<Exception> argumentCaptor = ArgumentCaptor.forClass(Exception.class);
@@ -471,7 +478,8 @@ public class TransportCreateConnectorActionTests extends OpenSearchTestCase {
             connectorAccessControlHelper,
             settings,
             clusterService,
-            mlModelManager
+            mlModelManager,
+            connectorDao
         );
         action.doExecute(task, request, actionListener);
         ArgumentCaptor<Exception> argumentCaptor = ArgumentCaptor.forClass(Exception.class);

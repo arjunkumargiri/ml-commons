@@ -89,12 +89,12 @@ public class DDBOpenSearchClient implements SdkClient {
     @Override
     public CompletionStage<PutDataObjectResponse> putDataObjectAsync(PutDataObjectRequest request, Executor executor) {
         final String id = request.id() != null ? request.id() : UUID.randomUUID().toString();
-        final String tenantId = request.tenantId() != null ? request.tenantId() : DEFAULT_TENANT;
         final String tableName = getTableName(request.index());
         return CompletableFuture.supplyAsync(() -> AccessController.doPrivileged((PrivilegedAction<PutDataObjectResponse>) () -> {
             String source = Strings.toString(MediaTypeRegistry.JSON, request.dataObject());
             try {
                 JsonNode jsonNode = OBJECT_MAPPER.readTree(source);
+                final String tenantId = request.tenantId() != null ? request.tenantId() : DEFAULT_TENANT;
                 Map<String, AttributeValue> item = JsonTransformer.convertJsonObjectToDDBAttributeMap(jsonNode);
                 item.put(HASH_KEY, AttributeValue.builder().s(tenantId).build());
                 item.put(RANGE_KEY, AttributeValue.builder().s(id).build());

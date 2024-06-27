@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 
+import lombok.extern.log4j.Log4j2;
 import org.opensearch.client.node.NodeClient;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.ml.common.transport.connector.MLCreateConnectorAction;
@@ -27,6 +28,7 @@ import org.opensearch.rest.action.RestToXContentListener;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 
+@Log4j2
 public class RestMLCreateConnectorAction extends BaseRestHandler {
     private static final String ML_CREATE_CONNECTOR_ACTION = "ml_create_connector_action";
     private final MLFeatureEnabledSetting mlFeatureEnabledSetting;
@@ -72,6 +74,7 @@ public class RestMLCreateConnectorAction extends BaseRestHandler {
         XContentParser parser = request.contentParser();
         ensureExpectedToken(XContentParser.Token.START_OBJECT, parser.nextToken(), parser);
         MLCreateConnectorInput mlCreateConnectorInput = MLCreateConnectorInput.parse(parser);
+        request.getHeaders().keySet().stream().forEach(k -> log.info("Header: " + k));
         String tenantId = getTenantID(mlFeatureEnabledSetting.isMultiTenancyEnabled(), request);
         mlCreateConnectorInput.setTenantId(tenantId);
         return new MLCreateConnectorRequest(mlCreateConnectorInput);

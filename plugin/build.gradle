@@ -84,6 +84,7 @@ dependencies {
     implementation "software.amazon.awssdk:third-party-jackson-core:2.25.40"
     implementation("software.amazon.awssdk:url-connection-client:2.25.40")
     implementation("software.amazon.awssdk:utils:2.25.40")
+    implementation("org.reactivestreams:reactive-streams:1.0.4")
 
 
     configurations.all {

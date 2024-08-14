@@ -457,6 +457,8 @@ public class DDBOpenSearchClientTests extends OpenSearchTestCase {
             .index(TEST_INDEX)
             .tenantId(TENANT_ID)
             .dataObject(Map.of("foo", "bar"))
+            .ifSeqNo(10)
+            .ifPrimaryTerm(10)
             .build();
         Mockito
             .when(dynamoDbClient.updateItem(updateItemRequestArgumentCaptor.capture()))
@@ -470,7 +472,13 @@ public class DDBOpenSearchClientTests extends OpenSearchTestCase {
         assertEquals(TEST_INDEX, updateItemRequest.tableName());
         assertEquals(TEST_ID, updateItemRequest.key().get(RANGE_KEY).s());
         assertEquals(TENANT_ID, updateItemRequest.key().get(HASH_KEY).s());
-        assertEquals("bar", updateItemRequest.attributeUpdates().get("_source").value().m().get("foo").s());
+        assertTrue(updateItemRequest.expressionAttributeNames().containsKey("#seqNo"));
+        assertTrue(updateItemRequest.expressionAttributeNames().containsKey("#source"));
+        assertTrue(updateItemRequest.expressionAttributeValues().containsKey(":incr"));
+        assertTrue(updateItemRequest.expressionAttributeValues().containsKey(":source"));
+        assertEquals("bar", updateItemRequest.expressionAttributeValues().get(":source").m().get("foo").s());
+        assertTrue(updateItemRequest.expressionAttributeValues().containsKey(":currentSeqNo"));
+        assertNotNull(updateItemRequest.conditionExpression());
         UpdateResponse response = UpdateResponse.fromXContent(updateResponse.parser());
         Assert.assertEquals(5, response.getSeqNo());
     }
